@@ -44,6 +44,7 @@ export interface Config {
   agentUrl?: string;
   agentToken?: string;
   intelligenceApiKey?: string;
+  allowLocalThreads?: boolean;
   googleClientId?: string;
   googleClientSecret?: string;
   googleRedirectUri: string;
@@ -72,19 +73,17 @@ export const intelligenceKeyRequiredMessage =
   "then set the generated server-only key. " +
   "See https://docs.copilotkit.ai/intelligence/connect-your-runtime";
 
+/** Local-only escape hatch: keep the conversation in this app's own storage instead of Intelligence. */
+export const localThreadsEnabled = () => process.env.ALLOW_LOCAL_THREADS === "true";
+
 export function required(name: string, message: string, value = process.env[name]): string {
   if (!value?.trim()) throw new Error(message);
   return value.trim();
 }
 
-export function assertApiDeploymentConfig(
-  config: Config,
-): asserts config is Config & { intelligenceApiKey: string } {
-  required(
-    "CPK_INTELLIGENCE_API_KEY",
-    intelligenceKeyRequiredMessage,
-    config.intelligenceApiKey ?? "",
-  );
+export function assertApiDeploymentConfig(config: Config): void {
+  if (!config.intelligenceApiKey?.trim() && !config.allowLocalThreads)
+    throw new Error(intelligenceKeyRequiredMessage);
 }
 
 /** Accept a full worker URL, or host:port from a platform that omits the scheme. */
@@ -149,7 +148,10 @@ export function readConfig(): Config {
     agentBackend: backend,
     agentUrl: process.env.AGENT_URL,
     agentToken: process.env.AGENT_TOKEN,
-    intelligenceApiKey: required("CPK_INTELLIGENCE_API_KEY", intelligenceKeyRequiredMessage),
+    intelligenceApiKey: localThreadsEnabled()
+      ? process.env.CPK_INTELLIGENCE_API_KEY?.trim() || undefined
+      : required("CPK_INTELLIGENCE_API_KEY", intelligenceKeyRequiredMessage),
+    allowLocalThreads: localThreadsEnabled(),
     googleClientId: process.env.GOOGLE_CLIENT_ID,
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
     googleRedirectUri: `${publicUrl}/api/google/callback`,
